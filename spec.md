@@ -270,3 +270,33 @@ later:
   shown to be insufficient.
 - Cross-machine/cross-user sharing of the memory store — this spec assumes
   one user, one machine, multiple local agent instances.
+
+## 7. Build status
+
+Tracks what's actually built versus designed-but-untouched, and — since not
+everything here is safe to build unsupervised — which pieces are blocked on
+a decision only a human can make versus which just haven't been scoped yet.
+A piece only qualifies as **loop-ready** once it has no open judgment call
+left *and* its real mechanics (which hook, which API, what it actually
+returns) have been verified against documentation rather than assumed —
+§3.7 needed that verification before it could be written correctly, and
+there's no reason to expect the others won't too.
+
+| # | Piece | Status | Blocked by | Loop-ready? |
+|---|-------|--------|------------|--------------|
+| 3.7 | Compaction hook (block auto, archive transcript) | **Prototyped & committed**, scoped to this repo only. Untested live (needs a fresh session to pick up `.claude/settings.json`); indefinite-auto-block edge case still unverified. | — | n/a — done |
+| 3.1 | Visible/revertible writes | Not started | Needs its own mechanics check: is there a hook that can intercept a write to the memory directory the way `PreCompact` intercepts compaction (`PreToolUse` matched on `Write`/`Edit`, maybe)? Unverified. | No — verification first |
+| 3.3 | On/off without delete | Not started | Nothing blocking — a schema decision (a `status` field, convention for where the toggle lives) | Close — needs scoping, not a decision |
+| 3.5 | Pinning as a floor | Not started | Nothing blocking — same shape as 3.3 | Close — needs scoping, not a decision |
+| 3.8 | Live budget visibility | Not started | Needs a mechanics check: can Claude Code's current context/token usage actually be queried from a skill/statusline? Unverified. | No — verification first |
+| 3.9 | Export/snapshot | Not started | Nothing blocking — could generalize `compaction-archive/`'s approach | Close — needs scoping, not a decision |
+| 3.2 | Agent-shared memory w/ provenance | Not started | **§5.1** — read-only vs. write-back changes the design | No |
+| 3.4 | Agent-driven relevance pruning | Not started | §3.1 (must route through the visible-proposal mechanism, which doesn't exist yet) | No |
+| 3.6 | Chain of accountability | Not started | **§5.1** explicitly (spec text already calls this out) | No |
+| 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
+
+**Reading this table:** the honest next candidates are 3.3, 3.5, or 3.9 —
+each needs a short scoping pass (closer to what §3.7 got) but isn't waiting
+on you to decide anything. 3.1 and 3.8 need a verification pass before
+they're even scoped. Everything touching §5.1 stays parked until that
+question is answered.
