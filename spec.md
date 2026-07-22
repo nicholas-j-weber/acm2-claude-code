@@ -93,11 +93,16 @@ is not "dump the whole store into every prompt" — it's assembled with
 spawn, so a human auditing a subagent's behavior can see exactly what it was
 given, not trust a hand-written summary of it.
 
-*Open question, not yet resolved:* is this read-only (only the main loop
-writes, subagents only read), or can subagents write back too? Read-only is
-simpler and ships first; write-back raises the concurrent-writer question —
-already answered in §3.6 (serialize), so choosing write-back here doesn't
-reopen a design question, just triggers implementing the queue.
+**Resolved: read-only for this draft.** Subagents draw from the store on
+spawn but don't write back — only the main loop writes, so every mutation
+still goes through the single-writer path §3.1 and §3.6 already handle,
+and §3.6's write queue never actually has to be built. Write-back is ruled
+out for now, not deferred to a later phase of this same design: there's no
+concrete case yet where a subagent needs to persist something the main
+loop couldn't just write itself after the subagent reports back, and
+reopening it means reopening the concurrent-writer question §3.6 just
+settled. Revisit only if a real scenario shows up where that hand-off is
+actually insufficient.
 
 ### 3.3 On/off without delete
 
@@ -320,14 +325,15 @@ there's no reason to expect the others won't too.
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. §3.4's `CLAUDE.md` instructions check this field and skip pinned entries entirely. | — | n/a — done (consumer is §3.4) |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
-| 3.2 | Agent-shared memory w/ provenance | Not started | Its own open question — read-only vs. write-back — not the concurrency model, which §3.6 already settled | No |
+| 3.2 | Agent-shared memory w/ provenance | Not started. **Resolved: read-only** — subagents draw from the store on spawn, never write back. | — | Close-ish — needs a scoping pass on how a subagent spawn actually receives context and records provenance, verified against real Agent tool mechanics rather than assumed |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
-| 3.6 | Chain of accountability | **Resolved (serialize), and the single-writer case is already satisfied** — `git log` on `memory/` is the `Version` record, nothing to build. The write queue itself is only needed once §3.2 picks write-back. | §3.2's read-only-vs-write-back call, if that's what ends up triggering the queue | n/a — nothing to build until triggered |
+| 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
 
-**Reading this table:** §5.1 is resolved (serialize), which frees §3.6 —
-already satisfied for the single-writer case, nothing left to build until
-§3.2 needs the queue. §3.2 itself is still parked on its own open question
-(read-only vs. write-back). §3.4 is scoped and loop-ready — what's left is
-writing the actual instruction telling the assistant to run the pruning
-behavior at its trigger points, not designing a new mechanism.
+**Reading this table:** every open judgment call under §3 is resolved now
+(§3.6: serialize; §3.2: read-only), and both resolutions turned out to
+close out §3.6 entirely rather than create new work. §3.1, §3.3, §3.4,
+§3.5, §3.7, and §3.9 are done. What's left: §3.2 needs a scoping pass on
+real Agent tool mechanics before it's loop-ready, and §4 is a separate,
+larger UI/architecture effort better suited to conversational design than
+loop execution.
