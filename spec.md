@@ -95,8 +95,9 @@ given, not trust a hand-written summary of it.
 
 *Open question, not yet resolved:* is this read-only (only the main loop
 writes, subagents only read), or can subagents write back too? Read-only is
-simpler and ships first; write-back raises the concurrent-writer question in
-§3.5 immediately.
+simpler and ships first; write-back raises the concurrent-writer question —
+already answered in §3.6 (serialize), so choosing write-back here doesn't
+reopen a design question, just triggers implementing the queue.
 
 ### 3.3 On/off without delete
 
@@ -159,13 +160,14 @@ attributed, timestamped record of every write and toggle. A custom
 `Version` model only becomes necessary once subagents can write
 concurrently (§3.2) — a single linear git history can't represent that.
 
-**Open, unresolved design question:** once concurrent writers exist, two
-options, not yet decided between:
-  - **Serialize.** A write queue; keep the simple linear-history model.
-    Simpler, but a bottleneck if writes get frequent.
-  - **Branch.** Real multi-parent history. More powerful, materially bigger
-    design lift — this is the harder option and shouldn't be the default
-    unless serialization is demonstrated to be a real bottleneck.
+**Resolved: serialize.** Once concurrent writers exist (§3.2, if write-back
+is chosen), writes go through a single queue — one write lands and its git
+commit exists before the next proceeds. This keeps the linear-history model
+above exactly as-is; no new data structure needed. Branching (real
+multi-parent history) is ruled out for this draft, not just deferred — it's
+materially more design and engineering lift for a bottleneck that can't
+even be evaluated yet, since nothing writes concurrently until §3.2 does.
+Reopen only if serialization is actually shown to bottleneck in practice.
 
 ### 3.7 Compaction: what's actually buildable
 
@@ -264,7 +266,7 @@ human resolved this." Before relying on a checkpoint, it checks the file's
 `status`. If still `pending`, it doesn't block — it uses `ScheduleWakeup` (a
 real, already-available tool) to check back rather than stalling the
 conversation. This is an accepted async gap, not a bug to design away; see
-§5.2.
+§5.1.
 
 ### 4.3 Launch
 
@@ -281,14 +283,11 @@ shared source of truth, so the window just renders whatever's currently in
 
 ## 5. Explicitly open questions
 
-Listed here instead of buried in prose, because they're the two decisions
-most likely to change the shape of an implementation if resolved differently
+Listed here instead of buried in prose, because it's the decision most
+likely to change the shape of an implementation if resolved differently
 later:
 
-1. **§3.6 — serialize vs. branch** for concurrent subagent writes. No
-   evidence yet on whether serialization is actually a bottleneck in
-   practice; default to serialize until proven otherwise.
-2. **§4.2 — the resolve-polling gap.** Is a `ScheduleWakeup`-driven
+1. **§4.2 — the resolve-polling gap.** Is a `ScheduleWakeup`-driven
    check-back an acceptable amount of asynchrony for a "pending checkpoint,"
    or does the experience need to feel tighter than that? Affects whether
    §4 is worth building as described or needs a different closing mechanism.
@@ -297,8 +296,9 @@ later:
 
 - A general-purpose memory-management UI for casual users who don't want any
   of this friction — everything above should stay opt-in.
-- Solving §5.1 up front with a full branching model before serialization is
-  shown to be insufficient.
+- A branching (multi-parent) write-history model for concurrent writers —
+  ruled out for this draft by §3.6's resolution; serialization is the
+  default, reopened only if it's shown to actually bottleneck.
 - Cross-machine/cross-user sharing of the memory store — this spec assumes
   one user, one machine, multiple local agent instances.
 
@@ -320,12 +320,14 @@ there's no reason to expect the others won't too.
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. §3.4's `CLAUDE.md` instructions check this field and skip pinned entries entirely. | — | n/a — done (consumer is §3.4) |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
-| 3.2 | Agent-shared memory w/ provenance | Not started | **§5.1** — read-only vs. write-back changes the design | No |
+| 3.2 | Agent-shared memory w/ provenance | Not started | Its own open question — read-only vs. write-back — not the concurrency model, which §3.6 already settled | No |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
-| 3.6 | Chain of accountability | Not started | **§5.1** explicitly (spec text already calls this out) | No |
+| 3.6 | Chain of accountability | **Resolved (serialize), and the single-writer case is already satisfied** — `git log` on `memory/` is the `Version` record, nothing to build. The write queue itself is only needed once §3.2 picks write-back. | §3.2's read-only-vs-write-back call, if that's what ends up triggering the queue | n/a — nothing to build until triggered |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
 
-**Reading this table:** everything touching §5.1 stays parked until that
-question is answered. §3.4 is now scoped and loop-ready — what's left is
+**Reading this table:** §5.1 is resolved (serialize), which frees §3.6 —
+already satisfied for the single-writer case, nothing left to build until
+§3.2 needs the queue. §3.2 itself is still parked on its own open question
+(read-only vs. write-back). §3.4 is scoped and loop-ready — what's left is
 writing the actual instruction telling the assistant to run the pruning
 behavior at its trigger points, not designing a new mechanism.
