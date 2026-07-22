@@ -294,6 +294,23 @@ real, already-available tool) to check back rather than stalling the
 conversation. This is an accepted async gap, not a bug to design away; see
 §5.1.
 
+**Resolved: moves to `resolved/`, not update-in-place.** Matches the
+directory scaffold above directly, and keeps `pending/` meaning exactly
+what it says — an in-place-but-marked-resolved file would sit there
+indefinitely, forcing every reader to filter on `status` instead of just
+listing the directory.
+
+**Implementation, scoped:** `memory/pending/` and `memory/resolved/`
+alongside the existing loose memory entries — same root, no new top-level
+directory. The app itself is a single Node script using only built-ins
+(`http`, `fs`) and a single static HTML page — no framework, no build
+step, no dependency: this is a directory listing, a textarea, and a save
+button, and the spec's own design already rules out anything live
+(poll/watch-based, confirmed in §3.7 — hooks can't push), so there's
+nothing here that benefits from more machinery. The page polls
+`GET /api/pending` on an interval; saving posts to `POST /api/resolve`,
+which rewrites the body, flips `status`, and moves the file.
+
 ### 4.3 Launch
 
 A skill bound to a slash command (e.g. `/context-window`):
@@ -306,6 +323,14 @@ A skill bound to a slash command (e.g. `/context-window`):
 No state travels through the command itself — the filesystem is already the
 shared source of truth, so the window just renders whatever's currently in
 `pending/`.
+
+**Implementation, scoped:** a project skill at
+`.claude/skills/context-window/SKILL.md`, invoked as `/context-window`. Port
+is fixed (chosen once, documented, not configurable — nothing here needs
+that flexibility). "Probe" is a plain `curl` against the server; "detached"
+means launched via `nohup ... & disown` in a `Bash` call, not the `Bash`
+tool's own `run_in_background`, since that ties the process's life to this
+session rather than letting it outlive it, which §4.3 explicitly requires.
 
 ## 5. Explicitly open questions
 
@@ -349,13 +374,10 @@ there's no reason to expect the others won't too.
 | 3.2 | Agent-shared memory w/ provenance | **Prototyped, committed, and verified live.** A fresh session correctly identified one relevant active memory entry, excluded an unrelated one, and spawned a subagent whose persisted transcript — checked directly, not taken on the session's word — shows the exact labeled `## Memory context included for this spawn` section. | — | n/a — done |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
-| 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
+| 4 | Companion window + bridge | **Scoped.** Bridge directories, resolve-vs-update-in-place, and the launch mechanism are all decided; stack is deliberately minimal (built-in `http`/`fs`, no framework, no dependency, poll-based). Nothing built yet. | — | Ready to build conversationally; still not a fit for autonomous loop execution — this is UI work, not a scripted check |
 
-**Reading this table:** every open judgment call under §3 is resolved now
-(§3.6: serialize; §3.2: read-only), and both resolutions turned out to
-close out §3.6 entirely rather than create new work. §3.1, §3.3, §3.4,
-§3.5, §3.7, and §3.9 are done; §3.2 is scoped and loop-ready — what's left
-is writing the instruction telling the spawning turn to actually curate
-and label memory context when it spawns a subagent that needs it. §4
-remains a separate, larger UI/architecture effort better suited to
-conversational design than loop execution.
+**Reading this table:** every piece under §3 is done and verified live
+(§3.1, §3.2, §3.3, §3.4, §3.5, §3.7, §3.9), or resolved with nothing left
+to build (§3.6). §4 is scoped — bridge layout, the resolve-vs-update-in-place
+call, and launch mechanics are all decided — and is what's left to actually
+build.
