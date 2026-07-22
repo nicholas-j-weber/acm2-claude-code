@@ -2,3 +2,4 @@ compaction-archive/
 memory-snapshots/
 memory/pending/
 memory/resolved/
+.claude/memory-auto-mode

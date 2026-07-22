@@ -92,3 +92,17 @@ whether it's actually been reviewed:
   the session ends first. That's fine — don't try to work around it. A
   later session just reads `memory/resolved/<file>` directly next time
   that checkpoint's content actually matters.
+
+## Auto mode (spec.md §3.10)
+
+`memory/` writes normally pause for approval (§3.1). If
+`.claude/memory-auto-mode` exists, that pause is off: writes land
+immediately and get logged to `memory/audit.log` instead.
+
+- The reason stated in an edit (e.g. §3.4's pruning proposals) matters more
+  when this is on, not less — with no approval dialog, it's the only
+  human-readable trace of *why* a write happened.
+- Never toggle it yourself. Don't run `scripts/memory-auto-mode.mjs on` (or
+  `off`) via `Bash` on your own initiative, even to reduce prompt friction
+  for the user. It changes a safety guarantee the whole write path depends
+  on — only a human decides when that trade is worth making.

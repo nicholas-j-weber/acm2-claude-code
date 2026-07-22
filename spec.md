@@ -224,6 +224,52 @@ it produced a specific answer — mirrors `SheetExport`. Primary use case:
 debugging a wrong or surprising answer by auditing exactly what was in
 context when it was generated.
 
+### 3.10 Auto mode: audited instead of approved
+
+For a developer who's used §3.1's approval dialog long enough to trust it and
+finds the per-write pause pure friction now, the `ask` can be swapped for
+`allow` — the write lands immediately, no prompt — with the cost made up for
+by a permanent, structured log instead of a human veto at write time.
+
+**Scope, so this doesn't quietly reopen §3.2.** This only changes *how* the
+write that was already going to happen proceeds — the main loop, which
+already had write access to `memory/` (gated by §3.1's dialog), writes the
+same content, the same way, through the same `Edit`/`Write` calls. It does
+**not** grant subagents new write access. §3.2's read-only resolution stands
+untouched either way — a subagent still can't write to `memory/` at all.
+"Auto mode so agents can modify memory" isn't what this builds; that would
+be reopening §3.2's write-back question, which is still ruled out for the
+reason §3.2 already gives, not something this section revisits.
+
+**Mechanism, verified against real hook behavior:** a local, gitignored
+marker file, `.claude/memory-auto-mode` — present means auto, absent means
+ask (unchanged default). `pre-memory-write.mjs` checks for it and returns
+`permissionDecision: "allow"` instead of `"ask"` when present. Confirmed
+against real Claude Code docs before building this: a `PreToolUse` hook's
+`permissionDecision` can be `allow`, `deny`, `ask`, or `defer`; `"allow"`
+genuinely suppresses the permission dialog rather than merely declining to
+block it, and settings-level deny/ask rules (there are none here) would
+still take precedence over a hook's `"allow"` if they existed. Toggled with
+`scripts/memory-auto-mode.mjs on|off|status`, mirroring §3.3's toggle-script
+pattern.
+
+**What "auditability" actually buys here.** Every write made under auto mode
+gets one line appended to `memory/audit.log` (timestamp, tool name, file,
+full `tool_input`) before it lands. Unlike the marker file, `audit.log` is
+tracked in git — reviewable the same way `git log` on `memory/` already is
+per §3.6, just with more structure per entry than a diff alone gives. This
+is honestly an *after-the-fact* record replacing a *before-the-fact* stop,
+not a strictly-better version of §3.1 — a bad write still lands the moment
+it happens; git history makes it revertible, not prevented. That trade is
+the actual thing being turned on, not a detail to gloss over.
+
+**Not the agent's call to flip.** `CLAUDE.md` instructs the agent to never
+invoke `scripts/memory-auto-mode.mjs` itself, for the same reason §3.4 had
+to rule out an agent shelling out to `memory-toggle.mjs`: silently enabling
+this to dodge future approval prompts would be exactly the kind of
+self-serving bypass the rest of this spec exists to prevent. A human decides
+when the trade is worth making.
+
 ## 4. The companion window
 
 CLI text has no rich inline editing surface — "editable" in a terminal means
@@ -387,11 +433,12 @@ there's no reason to expect the others won't too.
 | 3.2 | Agent-shared memory w/ provenance | **Prototyped, committed, and verified live.** A fresh session correctly identified one relevant active memory entry, excluded an unrelated one, and spawned a subagent whose persisted transcript — checked directly, not taken on the session's word — shows the exact labeled `## Memory context included for this spawn` section. | — | n/a — done |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
+| 3.10 | Auto mode (ask → allow + audit log) | **Prototyped, committed, self-tested.** `pre-memory-write.mjs`'s pure `decide()` takes an explicit `autoMode` flag, unit-tested for both branches (ask by default, allow when set, non-memory paths pass through either way); `main()` reads the real `.claude/memory-auto-mode` marker and appends to `memory/audit.log` before allowing. `scripts/memory-auto-mode.mjs on\|off\|status` toggles the marker. Not yet live-tested — no real session has run a memory write with the marker present. | — | not yet — needs a live test |
 | 4 | Companion window + bridge | **Fully built and verified live, read side included.** A fresh session found the pending checkpoint, reported the draft answer flagged as unreviewed, and scheduled a `CronCreate` check-back — first attempt miscalculated the delay by ~an hour because it inferred "now" from the checkpoint's own file timestamp instead of asking; caught live, fixed (`CLAUDE.md` now requires a real `date` call), and the retest scheduled correctly. Resolved the checkpoint from the other side; the session **spontaneously resumed on its own** when the cron fired, read the resolved version, reported the confirmed answer, and correctly declined to schedule a further check-back. Write-side history: `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/`, confirmed on disk. One flake there too — a click didn't reach the server the first time, no error surfaced — root cause unconfirmed, but the missing `fetch` error handling that let it fail silently is fixed, and the retest succeeded cleanly. | — | n/a — done |
 
-**Reading this table:** every piece is done. §3.1, §3.2, §3.4, §3.7, and §4
-are verified live (§3.7's auto-block half stays `--self-test`-only,
-permanently — Claude Code's own context-pressure trigger can't be forced
-on demand); §3.3, §3.5, and §3.9 are prototyped and committed but not
-live-tested; §3.6 is resolved with nothing left to build. Every open
-design question in §5 is resolved. Nothing in this spec is left unbuilt.
+**Reading this table:** §3.1, §3.2, §3.4, §3.7, and §4 are verified live
+(§3.7's auto-block half stays `--self-test`-only, permanently — Claude
+Code's own context-pressure trigger can't be forced on demand); §3.3, §3.5,
+and §3.9 are prototyped and committed but not live-tested; §3.6 is resolved
+with nothing left to build; §3.10 is prototyped, committed, and self-tested
+but still needs a live test. Every open design question in §5 is resolved.
