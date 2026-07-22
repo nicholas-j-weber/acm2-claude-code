@@ -81,6 +81,17 @@ itself still can't see how the human responded, so it can `ask`, `allow`, or
 `deny` up front, but can't run follow-up logic conditioned on the answer —
 "propose, then react" isn't possible in one hook call, only "propose."
 
+**Verified live, not just simulated:** ran a real session against this hook.
+It works — the prompt appeared, approving it let the write land, denying it
+left no file. But the same test surfaced a trust gap one layer up: on the
+first attempt the assistant's own reply claimed "Created memory/test-note.md"
+while the file did not exist, because it narrated the write as done without
+the pending approval actually resolving. The hook's behavior was correct;
+the assistant's *report* of what happened was not. Practical consequence:
+nothing built on top of §3.1 should treat the assistant's chat response as
+confirmation that a gated write landed — the only ground truth is checking
+the file/`git status` directly.
+
 ### 3.2 Agent-shared memory with provenance
 
 Subagents draw from the same store on spawn instead of starting cold. Access
