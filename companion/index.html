@@ -49,12 +49,20 @@ async function load() {
     button.onclick = async () => {
       button.disabled = true;
       button.textContent = "saving…";
-      await fetch("/api/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file: item.file, body: textarea.value }),
-      });
-      load();
+      try {
+        const res = await fetch("/api/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: item.file, body: textarea.value }),
+        });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        load();
+      } catch (err) {
+        button.disabled = false;
+        button.textContent = "Save & resolve";
+        alert("Resolve failed: " + err.message);
+        console.error(err);
+      }
     };
     card.appendChild(button);
 
