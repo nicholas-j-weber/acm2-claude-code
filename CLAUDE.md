@@ -63,3 +63,25 @@ This is read-only (§3.2 resolved against write-back): don't ask or expect
 a spawned subagent to write to `memory/`. If it reports back something
 worth remembering, the main loop writes it — as its own `Edit`/`Write`
 call, subject to the same §3.1 approval gate as any other write.
+
+## Companion window read side (spec.md §4.2)
+
+Before treating the content of a `memory/pending/*.md` checkpoint as
+settled — e.g. carrying its claims forward into later reasoning — check
+whether it's actually been reviewed:
+
+- Check `memory/resolved/<file>` first. If it exists, that's the
+  authoritative version (possibly human-edited) — use it, not whatever
+  draft content you originally wrote.
+- If it's still in `memory/pending/<file>`, don't block on it. Proceed
+  with the draft content, but treat it explicitly as unreviewed, and
+  schedule a check back with `CronCreate` (`recurring: false`) rather than
+  waiting or polling in a loop. Start short — about 2 minutes — since a
+  human who's just been handed a checkpoint via the companion window
+  often resolves it within moments. If it's still pending when that
+  fires, reschedule progressively later (e.g. 2 min → 10 min → 30 min)
+  instead of holding one fixed short interval indefinitely.
+- These jobs are session-only (per `CronCreate` itself) and disappear if
+  the session ends first. That's fine — don't try to work around it. A
+  later session just reads `memory/resolved/<file>` directly next time
+  that checkpoint's content actually matters.

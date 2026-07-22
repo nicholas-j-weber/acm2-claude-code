@@ -289,20 +289,29 @@ way).
 
 **Read side (closing the loop):** the session has no push signal for "the
 human resolved this." Before relying on a checkpoint, it checks the file's
-`status`. If still `pending`, it doesn't block — it uses `ScheduleWakeup` (a
-real, already-available tool) to check back rather than stalling the
-conversation. This is an accepted async gap, not a bug to design away.
+`status`. If still `pending`, it doesn't block — it schedules a check back
+rather than stalling the conversation. This is an accepted async gap, not
+a bug to design away.
 
-**Resolved: `ScheduleWakeup`, and there's nothing left to weigh it
-against.** §3.7 already confirmed no live/push channel exists between a
-session and an external process — `ScheduleWakeup`-driven polling isn't
-the cautious choice among options, it's the only mechanism Claude Code
-actually offers for "check back later without blocking." The real
-decision was never mechanism, just cadence: check back short at first
-(the companion window's own live test showed a human who's just been
-handed a checkpoint often resolves it within moments), then back off if
-it stays pending — not one fixed interval held indefinitely, and never
-blocking the conversation while waiting, which was already the design.
+**Resolved: `CronCreate`, not `ScheduleWakeup` — corrected after
+verification, and cadence was the only real decision left.** The spec
+originally named `ScheduleWakeup`, but that tool is scoped to `/loop`
+dynamic mode specifically (its own description ties it to loop-resume
+semantics); calling it in an ordinary session doesn't do what this
+section assumed. Confirmed against real Claude Code docs: `CronCreate`
+with `recurring: false` is the actual mechanism for "fire a prompt once,
+later, in this session." §3.7 already established no live/push channel
+exists between a session and an external process, so this was never a
+mechanism choice to weigh — it's the only option, corrected to the right
+name. Cadence: check back short at first (the companion window's own
+live test showed a human who's just been handed a checkpoint often
+resolves it within moments), then reschedule progressively later if it
+stays pending, rather than one fixed interval held indefinitely — and
+never block the conversation while waiting, which was already the
+design. One caveat inherited from `CronCreate` itself: these jobs are
+session-only and vanish if the session ends before the checkpoint
+resolves — acceptable, since a later session just reads the resolved
+file directly next time it's actually relevant, no catch-up needed.
 
 **Resolved: moves to `resolved/`, not update-in-place.** Matches the
 directory scaffold above directly, and keeps `pending/` meaning exactly
@@ -378,7 +387,7 @@ there's no reason to expect the others won't too.
 | 3.2 | Agent-shared memory w/ provenance | **Prototyped, committed, and verified live.** A fresh session correctly identified one relevant active memory entry, excluded an unrelated one, and spawned a subagent whose persisted transcript — checked directly, not taken on the session's word — shows the exact labeled `## Memory context included for this spawn` section. | — | n/a — done |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
-| 4 | Companion window + bridge | **Prototyped, committed, and verified live.** `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/` with the body change intact, confirmed on disk, not from either side's narration. One flake along the way: a click didn't reach the server the first time, file stayed untouched in `pending/`, no error surfaced — root cause unconfirmed (most likely a stale click during the auto-poll cycle), but the missing `fetch` error handling that let it fail silently is now fixed regardless, and the retest succeeded cleanly. | — | n/a — done |
+| 4 | Companion window + bridge | **Write side prototyped, committed, and verified live** (see below). **Read side now also built:** `CLAUDE.md` instructs checking `memory/resolved/` before trusting a checkpoint, and scheduling a `CronCreate` check-back (short, then backing off) if still pending — corrected from the originally-specified `ScheduleWakeup`, which turned out to be `/loop`-scoped and inapplicable here. Read side untested live. Write-side history: `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/` with the body change intact, confirmed on disk. One flake along the way — a click didn't reach the server the first time, no error surfaced — root cause unconfirmed, but the missing `fetch` error handling that let it fail silently is fixed, and the retest succeeded cleanly. | — | n/a — done |
 
 **Reading this table:** every piece is done, and every open design question
 in §5 is resolved. §3.1, §3.2, §3.4, §3.7, and §4 are verified live (§3.7's
@@ -386,5 +395,5 @@ auto-block half stays `--self-test`-only, permanently — Claude Code's own
 context-pressure trigger can't be forced on demand); §3.3, §3.5, and §3.9
 are prototyped and committed but not live-tested; §3.6 is resolved with
 nothing left to build. What's left isn't design — it's that §4.2's read
-side (checking a pending checkpoint's status via `ScheduleWakeup`) was
+side (checking a pending checkpoint's status via `CronCreate`) was
 scoped in prose but never actually built.
