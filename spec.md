@@ -291,8 +291,18 @@ way).
 human resolved this." Before relying on a checkpoint, it checks the file's
 `status`. If still `pending`, it doesn't block — it uses `ScheduleWakeup` (a
 real, already-available tool) to check back rather than stalling the
-conversation. This is an accepted async gap, not a bug to design away; see
-§5.1.
+conversation. This is an accepted async gap, not a bug to design away.
+
+**Resolved: `ScheduleWakeup`, and there's nothing left to weigh it
+against.** §3.7 already confirmed no live/push channel exists between a
+session and an external process — `ScheduleWakeup`-driven polling isn't
+the cautious choice among options, it's the only mechanism Claude Code
+actually offers for "check back later without blocking." The real
+decision was never mechanism, just cadence: check back short at first
+(the companion window's own live test showed a human who's just been
+handed a checkpoint often resolves it within moments), then back off if
+it stays pending — not one fixed interval held indefinitely, and never
+blocking the conversation while waiting, which was already the design.
 
 **Resolved: moves to `resolved/`, not update-in-place.** Matches the
 directory scaffold above directly, and keeps `pending/` meaning exactly
@@ -334,14 +344,8 @@ session rather than letting it outlive it, which §4.3 explicitly requires.
 
 ## 5. Explicitly open questions
 
-Listed here instead of buried in prose, because it's the decision most
-likely to change the shape of an implementation if resolved differently
-later:
-
-1. **§4.2 — the resolve-polling gap.** Is a `ScheduleWakeup`-driven
-   check-back an acceptable amount of asynchrony for a "pending checkpoint,"
-   or does the experience need to feel tighter than that? Affects whether
-   §4 is worth building as described or needs a different closing mechanism.
+None currently open. The last one (§4.2's resolve-polling gap — mechanism
+vs. cadence) is resolved; see §4.2.
 
 ## 6. Non-goals (for this draft)
 
@@ -376,10 +380,11 @@ there's no reason to expect the others won't too.
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
 | 4 | Companion window + bridge | **Prototyped, committed, and verified live.** `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/` with the body change intact, confirmed on disk, not from either side's narration. One flake along the way: a click didn't reach the server the first time, file stayed untouched in `pending/`, no error surfaced — root cause unconfirmed (most likely a stale click during the auto-poll cycle), but the missing `fetch` error handling that let it fail silently is now fixed regardless, and the retest succeeded cleanly. | — | n/a — done |
 
-**Reading this table:** every piece is done. §3.1, §3.2, §3.4, §3.7, and §4
-are verified live (§3.7's auto-block half stays `--self-test`-only,
-permanently — Claude Code's own context-pressure trigger can't be forced
-on demand); §3.3, §3.5, and §3.9 are prototyped and committed but not
-live-tested; §3.6 is resolved with nothing left to build. The only thing
-still genuinely open is §5.1 — the resolve-polling gap — a design question
-in §5, not a build-status row.
+**Reading this table:** every piece is done, and every open design question
+in §5 is resolved. §3.1, §3.2, §3.4, §3.7, and §4 are verified live (§3.7's
+auto-block half stays `--self-test`-only, permanently — Claude Code's own
+context-pressure trigger can't be forced on demand); §3.3, §3.5, and §3.9
+are prototyped and committed but not live-tested; §3.6 is resolved with
+nothing left to build. What's left isn't design — it's that §4.2's read
+side (checking a pending checkpoint's status via `ScheduleWakeup`) was
+scoped in prose but never actually built.
