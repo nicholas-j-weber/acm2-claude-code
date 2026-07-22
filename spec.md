@@ -70,6 +70,17 @@ same shape as `acm2-browser`'s suggestion+toast+undo pattern
 explicit undo window, rather than landing silently and only being
 discoverable by later going to read the file.
 
+**Verified against real Claude Code docs before writing this** (same
+discipline as §3.7): `PreToolUse` fires before `Write`/`Edit` calls, sees
+`tool_input.file_path`, and — the useful part — `permissionDecision: "ask"`
+in `hookSpecificOutput` delegates to Claude Code's own permission dialog,
+which genuinely pauses for a human and shows the change before it lands.
+Unlike `PreCompact`, this hook doesn't have to fake interactivity with a
+file-based bridge; the native UI already does it. The trade-off: the hook
+itself still can't see how the human responded, so it can `ask`, `allow`, or
+`deny` up front, but can't run follow-up logic conditioned on the answer —
+"propose, then react" isn't possible in one hook call, only "propose."
+
 ### 3.2 Agent-shared memory with provenance
 
 Subagents draw from the same store on spawn instead of starting cold. Access
@@ -285,19 +296,19 @@ there's no reason to expect the others won't too.
 | # | Piece | Status | Blocked by | Loop-ready? |
 |---|-------|--------|------------|--------------|
 | 3.7 | Compaction hook (block auto, archive transcript) | **Prototyped & committed**, scoped to this repo only. Untested live (needs a fresh session to pick up `.claude/settings.json`); indefinite-auto-block edge case still unverified. | — | n/a — done |
-| 3.1 | Visible/revertible writes | Not started | Needs its own mechanics check: is there a hook that can intercept a write to the memory directory the way `PreCompact` intercepts compaction (`PreToolUse` matched on `Write`/`Edit`, maybe)? Unverified. | No — verification first |
+| 3.1 | Visible/revertible writes | **Prototyped & committed.** `PreToolUse` hook matched on `Write\|Edit`, scoped to paths under `memory/`; uses `permissionDecision: "ask"` to route through Claude Code's native permission dialog. Untested live (needs a fresh session; simulated-payload tests only so far). | — | n/a — done |
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. Nothing yet reads it (no pruning pass exists — §3.4 is what would honor it). | — | n/a — done (consumer is §3.4) |
 | 3.8 | Live budget visibility | Not started | Needs a mechanics check: can Claude Code's current context/token usage actually be queried from a skill/statusline? Unverified. | No — verification first |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
 | 3.2 | Agent-shared memory w/ provenance | Not started | **§5.1** — read-only vs. write-back changes the design | No |
-| 3.4 | Agent-driven relevance pruning | Not started | §3.1 (must route through the visible-proposal mechanism, which doesn't exist yet) | No |
+| 3.4 | Agent-driven relevance pruning | Not started | §3.1 exists now (route pruning through its `ask` mechanism), but the pruning logic itself is undesigned | Close-ish — needs a scoping pass |
 | 3.6 | Chain of accountability | Not started | **§5.1** explicitly (spec text already calls this out) | No |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
 
-**Reading this table:** 3.1 and 3.8 need a verification pass before they're
-even scoped. Everything touching §5.1 stays parked until that question is
-answered.
+**Reading this table:** 3.8 is the only piece left needing a verification
+pass before it's even scoped. Everything touching §5.1 stays parked until
+that question is answered.
 
 **A note from building 3.3/3.5/3.9:** with a single writer (no subagents
 writing yet — that's still gated on §5.1), git commit history on `memory/`
