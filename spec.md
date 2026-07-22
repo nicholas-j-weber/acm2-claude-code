@@ -104,6 +104,27 @@ reopening it means reopening the concurrent-writer question §3.6 just
 settled. Revisit only if a real scenario shows up where that hand-off is
 actually insufficient.
 
+**Mechanism, verified against real subagent-spawn behavior:** a spawned
+subagent gets nothing except the `prompt` string handed to it — no separate
+context channel exists for a one-off spawn, and its own on-disk transcript
+is exactly that prompt plus everything it did after. So there's nothing new
+to build underneath this either: the "visible provenance" record isn't a
+separate log — it's the prompt itself, which already persists. The design
+question was never *how* to deliver it, only *what* the spawning turn is
+required to do:
+
+- Before spawning, select only the memory entries actually relevant to that
+  subagent's task — never "all active entries," which is exactly the "dump
+  the whole store" failure mode this section exists to avoid.
+- Embed them in the prompt under one labeled section (entry name + one-line
+  reason it's relevant), separate from the task instructions. That section
+  *is* the provenance record a human reviewing the transcript reads later.
+- Don't rely on the subagent finding `memory/` on its own. It auto-loads
+  `CLAUDE.md` (except Explore/Plan subagents, which skip it) and could in
+  principle `Read` the directory unprompted — but that's opportunistic, not
+  a designed provenance record, and depends on tool access this spec can't
+  assume. Curated inclusion in the prompt is the only reliable path.
+
 ### 3.3 On/off without delete
 
 Memories (or whole categories — `user`/`feedback`/`project`/`reference`,
@@ -325,7 +346,7 @@ there's no reason to expect the others won't too.
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. §3.4's `CLAUDE.md` instructions check this field and skip pinned entries entirely. | — | n/a — done (consumer is §3.4) |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
-| 3.2 | Agent-shared memory w/ provenance | Not started. **Resolved: read-only** — subagents draw from the store on spawn, never write back. | — | Close-ish — needs a scoping pass on how a subagent spawn actually receives context and records provenance, verified against real Agent tool mechanics rather than assumed |
+| 3.2 | Agent-shared memory w/ provenance | **Scoped.** Read-only; provenance is the spawn prompt itself (verified: no separate context channel exists, and a subagent's transcript persists it), so the actual requirement is curated selection into a labeled prompt section, not new infrastructure. No new code — reuses the Agent tool as-is. | — | Yes — what's left is behavioral (an instruction for the spawning turn to actually curate and label that section), not a mechanism to build |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
@@ -333,7 +354,8 @@ there's no reason to expect the others won't too.
 **Reading this table:** every open judgment call under §3 is resolved now
 (§3.6: serialize; §3.2: read-only), and both resolutions turned out to
 close out §3.6 entirely rather than create new work. §3.1, §3.3, §3.4,
-§3.5, §3.7, and §3.9 are done. What's left: §3.2 needs a scoping pass on
-real Agent tool mechanics before it's loop-ready, and §4 is a separate,
-larger UI/architecture effort better suited to conversational design than
-loop execution.
+§3.5, §3.7, and §3.9 are done; §3.2 is scoped and loop-ready — what's left
+is writing the instruction telling the spawning turn to actually curate
+and label memory context when it spawns a subagent that needs it. §4
+remains a separate, larger UI/architecture effort better suited to
+conversational design than loop execution.
