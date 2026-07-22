@@ -387,13 +387,11 @@ there's no reason to expect the others won't too.
 | 3.2 | Agent-shared memory w/ provenance | **Prototyped, committed, and verified live.** A fresh session correctly identified one relevant active memory entry, excluded an unrelated one, and spawned a subagent whose persisted transcript — checked directly, not taken on the session's word — shows the exact labeled `## Memory context included for this spawn` section. | — | n/a — done |
 | 3.4 | Agent-driven relevance pruning | **Prototyped, committed, and verified live.** A fresh session, given an unrelated task and pointed at `memory/`, correctly judged a throwaway fixture irrelevant, proposed the `status: active → inactive` edit, left the pinned memory alone, and the edit surfaced through §3.1's permission dialog exactly as designed. | — | n/a — done |
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
-| 4 | Companion window + bridge | **Write side prototyped, committed, and verified live** (see below). **Read side now also built:** `CLAUDE.md` instructs checking `memory/resolved/` before trusting a checkpoint, and scheduling a `CronCreate` check-back (short, then backing off) if still pending — corrected from the originally-specified `ScheduleWakeup`, which turned out to be `/loop`-scoped and inapplicable here. Read side untested live. Write-side history: `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/` with the body change intact, confirmed on disk. One flake along the way — a click didn't reach the server the first time, no error surfaced — root cause unconfirmed, but the missing `fetch` error handling that let it fail silently is fixed, and the retest succeeded cleanly. | — | n/a — done |
+| 4 | Companion window + bridge | **Fully built and verified live, read side included.** A fresh session found the pending checkpoint, reported the draft answer flagged as unreviewed, and scheduled a `CronCreate` check-back — first attempt miscalculated the delay by ~an hour because it inferred "now" from the checkpoint's own file timestamp instead of asking; caught live, fixed (`CLAUDE.md` now requires a real `date` call), and the retest scheduled correctly. Resolved the checkpoint from the other side; the session **spontaneously resumed on its own** when the cron fired, read the resolved version, reported the confirmed answer, and correctly declined to schedule a further check-back. Write-side history: `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/`, confirmed on disk. One flake there too — a click didn't reach the server the first time, no error surfaced — root cause unconfirmed, but the missing `fetch` error handling that let it fail silently is fixed, and the retest succeeded cleanly. | — | n/a — done |
 
-**Reading this table:** every piece is done, and every open design question
-in §5 is resolved. §3.1, §3.2, §3.4, §3.7, and §4 are verified live (§3.7's
-auto-block half stays `--self-test`-only, permanently — Claude Code's own
-context-pressure trigger can't be forced on demand); §3.3, §3.5, and §3.9
-are prototyped and committed but not live-tested; §3.6 is resolved with
-nothing left to build. What's left isn't design — it's that §4.2's read
-side (checking a pending checkpoint's status via `CronCreate`) was
-scoped in prose but never actually built.
+**Reading this table:** every piece is done. §3.1, §3.2, §3.4, §3.7, and §4
+are verified live (§3.7's auto-block half stays `--self-test`-only,
+permanently — Claude Code's own context-pressure trigger can't be forced
+on demand); §3.3, §3.5, and §3.9 are prototyped and committed but not
+live-tested; §3.6 is resolved with nothing left to build. Every open
+design question in §5 is resolved. Nothing in this spec is left unbuilt.

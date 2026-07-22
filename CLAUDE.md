@@ -81,6 +81,13 @@ whether it's actually been reviewed:
   often resolves it within moments. If it's still pending when that
   fires, reschedule progressively later (e.g. 2 min → 10 min → 30 min)
   instead of holding one fixed short interval indefinitely.
+- Before computing the cron fields, get the actual current time with
+  `date` (`Bash`) — never infer it from a checkpoint's file timestamp or
+  its `created:` frontmatter (that's UTC, likely a different value than
+  local time, and it's the checkpoint's creation time, not now). Guessing
+  "now" from nearby file metadata instead of asking for it directly is
+  exactly the kind of silent, unverified assumption this whole spec
+  exists to avoid.
 - These jobs are session-only (per `CronCreate` itself) and disappear if
   the session ends first. That's fine — don't try to work around it. A
   later session just reads `memory/resolved/<file>` directly next time
