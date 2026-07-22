@@ -118,6 +118,25 @@ memory is much harder to notice than the presence of a wrong one, so this is
 the mechanism most likely to cause quiet harm if built as a bare filter
 instead of a suggestion.
 
+Nothing new needs building underneath this — §3.1's hook already gates every
+`Edit`/`Write` under `memory/`, including a status flip. What was actually
+undesigned was the judgment and the exact action, not the gate:
+
+- **Trigger:** at natural checkpoints — session start after memory loads, or
+  before a subagent spawn (§3.2) — not on every prompt, which would just be
+  noise instead of a real filter.
+- **Action:** an `Edit` on the memory file's own frontmatter, `status:
+  active` → `status: inactive`, with a one-line reason (an
+  `agent-inferred` write, per §3.6's attribution taxonomy). That `Edit` call
+  is exactly what the human sees and approves in §3.1's dialog.
+- **Constraint, confirmed against real hook behavior:** `PreToolUse`
+  matchers filter by tool name, not by filesystem effect. Running
+  `scripts/memory-toggle.mjs` (§3.3) through the `Bash` tool would flip the
+  same field without ever touching the `Write|Edit` matcher — a silent
+  bypass of the exact gate this section requires. So the pruning path is
+  `Edit`-only; the toggle script stays a human-invoked CLI convenience, not
+  something an agent shells out to.
+
 ### 3.5 Pinning as a floor
 
 Some memories — hard constraints, safety-relevant corrective feedback —
@@ -302,10 +321,11 @@ there's no reason to expect the others won't too.
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. Nothing yet reads it (no pruning pass exists — §3.4 is what would honor it). | — | n/a — done (consumer is §3.4) |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
 | 3.2 | Agent-shared memory w/ provenance | Not started | **§5.1** — read-only vs. write-back changes the design | No |
-| 3.4 | Agent-driven relevance pruning | Not started | §3.1 exists now (route pruning through its `ask` mechanism), but the pruning logic itself is undesigned | Close-ish — needs a scoping pass |
+| 3.4 | Agent-driven relevance pruning | **Scoped.** Trigger, action (`Edit` on frontmatter `status`), and attribution are designed; confirmed the `Bash`-via-toggle-script path would silently bypass §3.1 and is therefore excluded. No new code — reuses §3.1's hook as-is. | — | Yes — what's left is behavioral (an instruction telling the assistant to actually do this at the trigger points), not a hook to build |
 | 3.6 | Chain of accountability | Not started | **§5.1** explicitly (spec text already calls this out) | No |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
 
 **Reading this table:** everything touching §5.1 stays parked until that
-question is answered; §3.4 is the only other unstarted piece not blocked by
-it.
+question is answered. §3.4 is now scoped and loop-ready — what's left is
+writing the actual instruction telling the assistant to run the pruning
+behavior at its trigger points, not designing a new mechanism.
