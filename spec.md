@@ -70,27 +70,20 @@ same shape as `acm2-browser`'s suggestion+toast+undo pattern
 explicit undo window, rather than landing silently and only being
 discoverable by later going to read the file.
 
-**Verified against real Claude Code docs before writing this** (same
-discipline as §3.7): `PreToolUse` fires before `Write`/`Edit` calls, sees
-`tool_input.file_path`, and — the useful part — `permissionDecision: "ask"`
-in `hookSpecificOutput` delegates to Claude Code's own permission dialog,
-which genuinely pauses for a human and shows the change before it lands.
-Unlike `PreCompact`, this hook doesn't have to fake interactivity with a
-file-based bridge; the native UI already does it. The trade-off: the hook
-itself still can't see how the human responded, so it can `ask`, `allow`, or
-`deny` up front, but can't run follow-up logic conditioned on the answer —
-"propose, then react" isn't possible in one hook call, only "propose."
+Built as a `PreToolUse` hook matched on `Write`/`Edit`, scoped to paths
+under `memory/`. Its `permissionDecision: "ask"` delegates to Claude Code's
+own permission dialog, which genuinely pauses for a human and shows the
+change before it lands — no custom UI needed. The limitation: the hook
+can `ask`, `allow`, or `deny` up front, but can't run follow-up logic
+conditioned on the answer, so "propose, then react" isn't possible in one
+hook call, only "propose."
 
-**Verified live, not just simulated:** ran a real session against this hook.
-It works — the prompt appeared, approving it let the write land, denying it
-left no file. But the same test surfaced a trust gap one layer up: on the
-first attempt the assistant's own reply claimed "Created memory/test-note.md"
-while the file did not exist, because it narrated the write as done without
-the pending approval actually resolving. The hook's behavior was correct;
-the assistant's *report* of what happened was not. Practical consequence:
-nothing built on top of §3.1 should treat the assistant's chat response as
-confirmation that a gated write landed — the only ground truth is checking
-the file/`git status` directly.
+The hook's behavior is trustworthy; the assistant's own chat narration of
+it is not. A live test showed the assistant claiming a write had succeeded
+while the approval was still pending and the file didn't yet exist — it
+described the write as done without waiting to see whether the human
+approved it. Anything built on top of §3.1 needs to treat the assistant's
+"done" as unverified and check the file/`git status` directly.
 
 ### 3.2 Agent-shared memory with provenance
 
@@ -141,10 +134,14 @@ timestamped, attributed (`manual` / `agent-inferred` / `corrective-feedback`
 non-destructive revert. A bad write rolls back without losing everything
 written since.
 
-**Open, unresolved design question:** `acm2-browser`'s `Version` model
-assumes one head pointer and one writer at a time. Once subagents can write
-concurrently (§3.2), that assumption breaks. Two options, not yet decided
-between:
+With a single writer, this doesn't need building from scratch: `memory/` is
+a git-tracked directory, and `git log` on it already is a non-destructive,
+attributed, timestamped record of every write and toggle. A custom
+`Version` model only becomes necessary once subagents can write
+concurrently (§3.2) — a single linear git history can't represent that.
+
+**Open, unresolved design question:** once concurrent writers exist, two
+options, not yet decided between:
   - **Serialize.** A write queue; keep the simple linear-history model.
     Simpler, but a bottleneck if writes get frequent.
   - **Branch.** Real multi-parent history. More powerful, materially bigger
@@ -312,9 +309,3 @@ there's no reason to expect the others won't too.
 **Reading this table:** everything touching §5.1 stays parked until that
 question is answered; §3.4 is the only other unstarted piece not blocked by
 it.
-
-**A note from building 3.3/3.5/3.9:** with a single writer (no subagents
-writing yet — that's still gated on §5.1), git commit history on `memory/`
-already *is* a non-destructive, attributed, timestamped record of every
-toggle. §3.6's `Version` model may not need building from scratch until
-concurrent writers actually exist; it might just need reading off `git log`.
