@@ -173,13 +173,6 @@ round-trip to the user. This materially changes what's achievable:
   real context pressure, so review happens in the normal conversational
   flow rather than at a hard stop.
 
-### 3.8 Live budget visibility
-
-A running sense of how much of the context budget memory/history is
-consuming, with a proactive nudge to curate — mirrors the Token Estimator +
-compression-recommendation banner in `acm2-browser`. Has no analogue in
-Claude Code today; you only notice pressure after compaction already fired.
-
 ### 3.9 Export / snapshot
 
 A way to freeze and inspect "exactly what this session knew" at the moment
@@ -310,16 +303,15 @@ there's no reason to expect the others won't too.
 | 3.1 | Visible/revertible writes | **Prototyped & committed.** `PreToolUse` hook matched on `Write\|Edit`, scoped to paths under `memory/`; uses `permissionDecision: "ask"` to route through Claude Code's native permission dialog. Untested live (needs a fresh session; simulated-payload tests only so far). | — | n/a — done |
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. Nothing yet reads it (no pruning pass exists — §3.4 is what would honor it). | — | n/a — done (consumer is §3.4) |
-| 3.8 | Live budget visibility | Not started | Needs a mechanics check: can Claude Code's current context/token usage actually be queried from a skill/statusline? Unverified. | No — verification first |
 | 3.9 | Export/snapshot | **Prototyped & committed.** `scripts/memory-snapshot.mjs` reads `memory/`, filters out `status: inactive`, writes full content of the rest to a timestamped file in gitignored `memory-snapshots/`. | — | n/a — done |
 | 3.2 | Agent-shared memory w/ provenance | Not started | **§5.1** — read-only vs. write-back changes the design | No |
 | 3.4 | Agent-driven relevance pruning | Not started | §3.1 exists now (route pruning through its `ask` mechanism), but the pruning logic itself is undesigned | Close-ish — needs a scoping pass |
 | 3.6 | Chain of accountability | Not started | **§5.1** explicitly (spec text already calls this out) | No |
 | 4 | Companion window + bridge | Not started | Not blocked, but this is UI/architecture design work — better suited to conversational design (like §3.7 got) than to loop execution regardless of dependencies | No — wrong kind of work for a loop |
 
-**Reading this table:** 3.8 is the only piece left needing a verification
-pass before it's even scoped. Everything touching §5.1 stays parked until
-that question is answered.
+**Reading this table:** everything touching §5.1 stays parked until that
+question is answered; §3.4 is the only other unstarted piece not blocked by
+it.
 
 **A note from building 3.3/3.5/3.9:** with a single writer (no subagents
 writing yet — that's still gated on §5.1), git commit history on `memory/`
