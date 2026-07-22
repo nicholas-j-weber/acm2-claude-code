@@ -366,7 +366,7 @@ there's no reason to expect the others won't too.
 
 | # | Piece | Status | Blocked by | Loop-ready? |
 |---|-------|--------|------------|--------------|
-| 3.7 | Compaction hook (block auto, archive transcript) | **Prototyped & committed**, scoped to this repo only. Untested live (needs a fresh session to pick up `.claude/settings.json`); indefinite-auto-block edge case still unverified. | — | n/a — done |
+| 3.7 | Compaction hook (block auto, archive transcript) | **Prototyped, committed, and verified live for the manual path.** A real `/compact` in a fresh session archived the pre-compaction transcript to `compaction-archive/` (correctly named `<timestamp>-manual-<session_id>.jsonl`) and didn't block, confirmed on disk. The auto-block path stays `--self-test`-only, not live — there's no supported way to force Claude Code's own context-pressure trigger on demand, so this is an accepted, permanent gap, not a pending task. | — | n/a — done |
 | 3.1 | Visible/revertible writes | **Prototyped, committed, and verified live.** `PreToolUse` hook matched on `Write\|Edit`, scoped to paths under `memory/`; uses `permissionDecision: "ask"` to route through Claude Code's native permission dialog. A real session confirmed the prompt appears and gates the write correctly. | — | n/a — done |
 | 3.3 | On/off without delete | **Prototyped & committed.** `memory/` dir + frontmatter `status: active\|inactive` field; toggled via `scripts/memory-toggle.mjs <file> on\|off`. | — | n/a — done |
 | 3.5 | Pinning as a floor | **Prototyped & committed.** Same file, `pinned: true\|false` field; `scripts/memory-toggle.mjs <file> pin\|unpin`. §3.4's `CLAUDE.md` instructions check this field and skip pinned entries entirely. | — | n/a — done (consumer is §3.4) |
@@ -376,10 +376,10 @@ there's no reason to expect the others won't too.
 | 3.6 | Chain of accountability | **Resolved and fully satisfied.** `git log` on `memory/` is the `Version` record. §3.2 is read-only, so the write queue this section designed for concurrent writers has no consumer in this draft — nothing left to build. | — | n/a — done |
 | 4 | Companion window + bridge | **Prototyped, committed, and verified live.** `/context-window` correctly probed the port, spawned the server detached, and opened a real browser tab; a real edit-and-save round-tripped through `resolved/` with the body change intact, confirmed on disk, not from either side's narration. One flake along the way: a click didn't reach the server the first time, file stayed untouched in `pending/`, no error surfaced — root cause unconfirmed (most likely a stale click during the auto-poll cycle), but the missing `fetch` error handling that let it fail silently is now fixed regardless, and the retest succeeded cleanly. | — | n/a — done |
 
-**Reading this table:** every piece is done. §3.1, §3.2, §3.4, and §4 are
-verified live; §3.3, §3.5, §3.7, and §3.9 are prototyped and committed but
-not live-tested; §3.6 is resolved with nothing left to build. The two loose
-ends aren't rows here at all: §3.7's own status line is stale (still says
-"untested live," never revisited after the others got their live-test
-pass), and §5.1 — the resolve-polling gap — is still an open design
-question in §5.
+**Reading this table:** every piece is done. §3.1, §3.2, §3.4, §3.7, and §4
+are verified live (§3.7's auto-block half stays `--self-test`-only,
+permanently — Claude Code's own context-pressure trigger can't be forced
+on demand); §3.3, §3.5, and §3.9 are prototyped and committed but not
+live-tested; §3.6 is resolved with nothing left to build. The only thing
+still genuinely open is §5.1 — the resolve-polling gap — a design question
+in §5, not a build-status row.
