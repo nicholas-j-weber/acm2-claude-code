@@ -1,2 +1,4 @@
 compaction-archive/
 memory-snapshots/
+memory/pending/
+memory/resolved/

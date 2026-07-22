@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>acm2-cc companion window</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.1rem; color: #666; }
+  .card { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; }
+  .meta { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; }
+  .meta span { margin-right: 1rem; }
+  textarea { width: 100%; min-height: 8rem; box-sizing: border-box; font: inherit; padding: 0.5rem; }
+  button { margin-top: 0.5rem; padding: 0.4rem 1rem; }
+  .empty { color: #888; }
+</style>
+</head>
+<body>
+<h1>pending — memory/pending/</h1>
+<div id="list" class="empty">loading…</div>
+
+<script>
+async function load() {
+  const items = await fetch("/api/pending").then(r => r.json());
+  const list = document.getElementById("list");
+  if (items.length === 0) {
+    list.className = "empty";
+    list.textContent = "nothing pending";
+    return;
+  }
+  list.className = "";
+  list.innerHTML = "";
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML = `<span><b>${item.kind ?? "?"}</b></span>` +
+      `<span>${item.created ?? ""}</span>` +
+      `<span>${item.file}</span>`;
+    card.appendChild(meta);
+
+    const textarea = document.createElement("textarea");
+    textarea.value = item.body;
+    card.appendChild(textarea);
+
+    const button = document.createElement("button");
+    button.textContent = "Save & resolve";
+    button.onclick = async () => {
+      button.disabled = true;
+      button.textContent = "saving…";
+      await fetch("/api/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: item.file, body: textarea.value }),
+      });
+      load();
+    };
+    card.appendChild(button);
+
+    list.appendChild(card);
+  }
+}
+
+load();
+// ponytail: skips a poll while a textarea is focused, so an in-progress edit
+// isn't wiped by the next refresh. Doesn't cover click-away-then-back mid-edit;
+// upgrade to per-field dirty-tracking if that turns out to matter in practice.
+setInterval(() => {
+  if (document.activeElement?.tagName === "TEXTAREA") return;
+  load();
+}, 3000);
+</script>
+</body>
+</html>
