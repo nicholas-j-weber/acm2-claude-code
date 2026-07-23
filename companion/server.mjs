@@ -14,6 +14,7 @@ import { readFrontmatter, getField, setField } from "../scripts/frontmatter.mjs"
 
 const PORT = 4317;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const MEMORY_DIR = join(ROOT, "memory");
 const PENDING_DIR = join(ROOT, "memory", "pending");
 const RESOLVED_DIR = join(ROOT, "memory", "resolved");
 const INDEX_HTML = join(dirname(fileURLToPath(import.meta.url)), "index.html");
@@ -57,6 +58,79 @@ function resolvePending(file, newBody) {
   unlinkSync(path);
 }
 
+// The memory list/edit/delete/compress API below writes to memory/*.md
+// directly via fs, same as resolvePending above — no bypass of §3.1's
+// PreToolUse hook, since that hook only gates Claude Code's own tool calls.
+// A human editing through this window *is* the approval; that's the whole
+// point of exposing it here instead of routing it back through the agent.
+
+function listMemories() {
+  return readdirSync(MEMORY_DIR)
+    .filter((f) => f.endsWith(".md"))
+    .map((file) => {
+      const text = readFileSync(join(MEMORY_DIR, file), "utf8");
+      const fm = readFrontmatter(text);
+      if (!fm) return null;
+      return {
+        file,
+        name: getField(fm.raw, "name"),
+        description: getField(fm.raw, "description"),
+        status: getField(fm.raw, "status"),
+        pinned: getField(fm.raw, "pinned") === "true",
+        summarizes: getField(fm.raw, "summarizes"),
+        body: text.slice(fm.end).trim(),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+}
+
+function updateMemory(file, { body, pinned, status }) {
+  const safeName = basename(file);
+  const path = join(MEMORY_DIR, safeName);
+  if (!existsSync(path)) throw new Error("not found");
+  let text = readFileSync(path, "utf8");
+  if (pinned !== undefined) text = setField(text, "pinned", String(pinned));
+  if (status !== undefined) text = setField(text, "status", status);
+  if (body !== undefined) {
+    const fm = readFrontmatter(text);
+    text = text.slice(0, fm.end) + body.trim() + "\n";
+  }
+  writeFileSync(path, text);
+}
+
+function deleteMemoryFile(file) {
+  const path = join(MEMORY_DIR, basename(file));
+  if (existsSync(path)) unlinkSync(path);
+}
+
+// Compression (mirrors acm2-browser's Memory.kind === "summary": a digest
+// that replaces one or more entries, deactivating — never deleting — the
+// ones it replaces). `summarizes` is provenance: which entries this digest
+// stands in for, so a human reading the file later can see what was folded
+// in without having to reconstruct it from git history.
+function compressMemories({ name, description, type, body, summarizes }) {
+  const fileName = `${name}.md`;
+  const path = join(MEMORY_DIR, fileName);
+  if (existsSync(path)) throw new Error(`memory/${fileName} already exists`);
+  const frontmatter =
+    `---\n` +
+    `name: ${name}\n` +
+    `description: ${description}\n` +
+    `metadata:\n` +
+    `  type: ${type}\n` +
+    `status: active\n` +
+    `pinned: false\n` +
+    `summarizes: ${summarizes.join(", ")}\n` +
+    `---\n\n`;
+  writeFileSync(path, frontmatter + body.trim() + "\n");
+  for (const f of summarizes) {
+    const p = join(MEMORY_DIR, basename(f));
+    if (existsSync(p)) writeFileSync(p, setField(readFileSync(p, "utf8"), "status", "inactive"));
+  }
+  return fileName;
+}
+
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
@@ -81,6 +155,38 @@ const server = createServer((req, res) => {
       try {
         const { file, body } = JSON.parse(data);
         resolvePending(file, body ?? "");
+        json(res, 200, { ok: true });
+      } catch (err) {
+        json(res, 400, { ok: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/memories") {
+    json(res, 200, listMemories());
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    ["/api/memories/update", "/api/memories/delete", "/api/memories/compress"].includes(req.url)
+  ) {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(data);
+        if (req.url === "/api/memories/update") {
+          const { file, body, pinned, status } = payload;
+          updateMemory(file, { body, pinned, status });
+        } else if (req.url === "/api/memories/delete") {
+          deleteMemoryFile(payload.file);
+        } else {
+          const { name, description, type, body, summarizes } = payload;
+          if (!name || !summarizes?.length) throw new Error("name and summarizes[] are required");
+          compressMemories({ name, description: description ?? "", type: type ?? "project", body: body ?? "", summarizes });
+        }
         json(res, 200, { ok: true });
       } catch (err) {
         json(res, 400, { ok: false, error: err.message });
@@ -114,6 +220,37 @@ if (process.argv[2] === "--self-test") {
   console.assert(resolvedText.includes("status: resolved"), "resolved file should have status flipped");
   console.assert(resolvedText.includes("edited body"), "resolved file should have the edited body");
   unlinkSync(join(RESOLVED_DIR, "__self-test.md"));
+
+  const memA = join(MEMORY_DIR, "__self-test-a.md");
+  const memB = join(MEMORY_DIR, "__self-test-b.md");
+  writeFileSync(memA, "---\nname: a\ndescription: a\nstatus: active\npinned: false\n---\n\nbody a\n");
+  writeFileSync(memB, "---\nname: b\ndescription: b\nstatus: active\npinned: false\n---\n\nbody b\n");
+
+  const mems = listMemories();
+  console.assert(mems.some((m) => m.name === "a" && m.body === "body a"), "should list memory files with parsed body");
+
+  updateMemory("__self-test-a.md", { pinned: true, status: "inactive", body: "edited a" });
+  const editedA = readFileSync(memA, "utf8");
+  console.assert(editedA.includes("pinned: true"), "update should set pinned");
+  console.assert(editedA.includes("status: inactive"), "update should set status");
+  console.assert(editedA.includes("edited a"), "update should set body");
+
+  const summaryFile = compressMemories({
+    name: "__self-test-summary",
+    description: "summary",
+    type: "project",
+    body: "digest of a and b",
+    summarizes: ["__self-test-a.md", "__self-test-b.md"],
+  });
+  const summaryPath = join(MEMORY_DIR, summaryFile);
+  const summaryText = readFileSync(summaryPath, "utf8");
+  console.assert(summaryText.includes("summarizes: __self-test-a.md, __self-test-b.md"), "summary should record what it summarizes");
+  console.assert(readFileSync(memB, "utf8").includes("status: inactive"), "compress should deactivate summarized entries");
+  unlinkSync(summaryPath);
+
+  deleteMemoryFile("__self-test-a.md");
+  console.assert(!existsSync(memA), "delete should remove the file");
+  unlinkSync(memB);
 
   console.log("server.mjs self-test passed");
   process.exit(0);

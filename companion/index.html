@@ -5,20 +5,195 @@
 <title>acm2-cc companion window</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.1rem; color: #666; }
+  h1 { font-size: 1.1rem; color: #666; margin-top: 2.5rem; }
+  h1:first-of-type { margin-top: 0; }
   .card { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; }
-  .meta { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; }
-  .meta span { margin-right: 1rem; }
-  textarea { width: 100%; min-height: 8rem; box-sizing: border-box; font: inherit; padding: 0.5rem; }
-  button { margin-top: 0.5rem; padding: 0.4rem 1rem; }
+  .card--inactive { opacity: 0.55; }
+  .card--summary { border-color: #7a5cff; }
+  .meta { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .meta .desc { color: #888; }
+  textarea { width: 100%; min-height: 8rem; box-sizing: border-box; font: inherit; padding: 0.5rem; margin-top: 0.5rem; }
+  button { padding: 0.4rem 1rem; }
+  .row { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; flex-wrap: wrap; }
+  .row label { font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; }
+  .danger { color: #a00; border-color: #a00; }
   .empty { color: #888; }
+  .compress-bar { position: sticky; bottom: 0; background: #fff; border-top: 1px solid #ccc; padding: 0.75rem 0; margin-top: 1rem; display: none; }
+  .compress-bar.visible { display: block; }
+  .compress-bar input, .compress-bar select, .compress-bar textarea { display: block; width: 100%; box-sizing: border-box; margin: 0.3rem 0; font: inherit; padding: 0.4rem; }
 </style>
 </head>
 <body>
+<h1>memory — memory/*.md</h1>
+<div id="memList" class="empty">loading…</div>
+<div id="compressBar" class="compress-bar">
+  <div id="compressCount"></div>
+  <input id="compressName" placeholder="new memory name (used as memory/<name>.md)">
+  <input id="compressDescription" placeholder="one-line description">
+  <select id="compressType">
+    <option value="user">user</option>
+    <option value="feedback">feedback</option>
+    <option value="project" selected>project</option>
+    <option value="reference">reference</option>
+  </select>
+  <textarea id="compressBody" placeholder="summary body"></textarea>
+  <button id="compressButton">Create summary &amp; deactivate selected</button>
+</div>
+
 <h1>pending — memory/pending/</h1>
 <div id="list" class="empty">loading…</div>
 
 <script>
+const selected = new Set();
+
+function anyFieldFocused(root) {
+  const el = document.activeElement;
+  return el && root.contains(el) && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT");
+}
+
+async function loadMemories() {
+  const container = document.getElementById("memList");
+  if (anyFieldFocused(container) || anyFieldFocused(document.getElementById("compressBar"))) return;
+
+  const items = await fetch("/api/memories").then(r => r.json());
+  if (items.length === 0) {
+    container.className = "empty";
+    container.textContent = "no memory entries";
+    updateCompressBar(items);
+    return;
+  }
+  container.className = "";
+  container.innerHTML = "";
+
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "card" + (item.status !== "active" ? " card--inactive" : "") + (item.summarizes ? " card--summary" : "");
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML =
+      `<label><input type="checkbox" class="select-box" ${selected.has(item.file) ? "checked" : ""}></label>` +
+      `<span><b>${item.name ?? item.file}</b></span>` +
+      `<span class="desc">${item.description ?? ""}</span>` +
+      (item.summarizes ? `<span>summarizes: ${item.summarizes}</span>` : "");
+    card.appendChild(meta);
+
+    meta.querySelector(".select-box").onchange = (e) => {
+      if (e.target.checked) selected.add(item.file);
+      else selected.delete(item.file);
+      updateCompressBar(items);
+    };
+
+    const textarea = document.createElement("textarea");
+    textarea.value = item.body;
+    card.appendChild(textarea);
+
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const activeLabel = document.createElement("label");
+    const activeBox = document.createElement("input");
+    activeBox.type = "checkbox";
+    activeBox.checked = item.status === "active";
+    activeLabel.appendChild(activeBox);
+    activeLabel.append("active");
+    row.appendChild(activeLabel);
+
+    const pinLabel = document.createElement("label");
+    const pinBox = document.createElement("input");
+    pinBox.type = "checkbox";
+    pinBox.checked = item.pinned;
+    pinLabel.appendChild(pinBox);
+    pinLabel.append("pinned");
+    row.appendChild(pinLabel);
+
+    const saveButton = document.createElement("button");
+    saveButton.textContent = "Save";
+    saveButton.onclick = async () => {
+      saveButton.disabled = true;
+      try {
+        const res = await fetch("/api/memories/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file: item.file,
+            body: textarea.value,
+            pinned: pinBox.checked,
+            status: activeBox.checked ? "active" : "inactive",
+          }),
+        });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        loadMemories();
+      } catch (err) {
+        saveButton.disabled = false;
+        alert("Save failed: " + err.message);
+      }
+    };
+    row.appendChild(saveButton);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.textContent = "Delete";
+    deleteButton.className = "danger";
+    deleteButton.onclick = async () => {
+      if (!confirm(`Delete memory/${item.file}? This removes the file (recoverable via git history if committed).`)) return;
+      deleteButton.disabled = true;
+      try {
+        const res = await fetch("/api/memories/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: item.file }),
+        });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        selected.delete(item.file);
+        loadMemories();
+      } catch (err) {
+        deleteButton.disabled = false;
+        alert("Delete failed: " + err.message);
+      }
+    };
+    row.appendChild(deleteButton);
+
+    card.appendChild(row);
+    container.appendChild(card);
+  }
+
+  updateCompressBar(items);
+}
+
+function updateCompressBar(items) {
+  // pruning stale selections (a deleted card can't stay selected)
+  const valid = new Set(items.map((i) => i.file));
+  for (const f of [...selected]) if (!valid.has(f)) selected.delete(f);
+
+  const bar = document.getElementById("compressBar");
+  bar.classList.toggle("visible", selected.size >= 2);
+  document.getElementById("compressCount").textContent = `${selected.size} selected for summarizing`;
+}
+
+document.getElementById("compressButton").onclick = async () => {
+  const name = document.getElementById("compressName").value.trim();
+  const description = document.getElementById("compressDescription").value.trim();
+  const type = document.getElementById("compressType").value;
+  const body = document.getElementById("compressBody").value.trim();
+  if (!name || !body) { alert("name and summary body are required"); return; }
+
+  try {
+    const res = await fetch("/api/memories/compress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description, type, body, summarizes: [...selected] }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error ?? res.status);
+    selected.clear();
+    document.getElementById("compressName").value = "";
+    document.getElementById("compressDescription").value = "";
+    document.getElementById("compressBody").value = "";
+    loadMemories();
+  } catch (err) {
+    alert("Compress failed: " + err.message);
+  }
+};
+
 async function load() {
   const items = await fetch("/api/pending").then(r => r.json());
   const list = document.getElementById("list");
@@ -70,11 +245,13 @@ async function load() {
   }
 }
 
+loadMemories();
 load();
-// ponytail: skips a poll while a textarea is focused, so an in-progress edit
+// ponytail: skips a poll while a field is focused, so an in-progress edit
 // isn't wiped by the next refresh. Doesn't cover click-away-then-back mid-edit;
 // upgrade to per-field dirty-tracking if that turns out to matter in practice.
 setInterval(() => {
+  loadMemories();
   if (document.activeElement?.tagName === "TEXTAREA") return;
   load();
 }, 3000);
