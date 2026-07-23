@@ -65,55 +65,83 @@ this step once and catching it live).
    re-supplying whatever context the memory store says is relevant. This is
    a real design decision, not a default (§3).
 
-## 3. Open design questions — for collaboration, not yet decided
+## 3. Resolved design decisions
 
-- **Session boundary policy.** One `query()` call per submission with no
-  resume (true statelessness, closest to the original motivation) vs. a
-  longer-lived session with periodic resets (cheaper, more like today's
-  CLI session, weaker on the "nothing carries over silently" property).
-  This is the central tradeoff of the whole rebuild and should be settled
-  before anything else here.
-- **`canUseTool` vs. the existing `PreToolUse` hook — pick one, not both.**
-  Both can gate a memory write; running both would just be two approval
-  paths for the same event. `canUseTool` runs in-process (no shell-out, can
-  hold richer state like the auto-mode marker directly instead of checking a
-  file); the hook is what's already built and verified live. Leaning
-  `canUseTool` for the rebuild specifically because in-process state removes
-  the marker-file toggle's whole reason for existing — worth discussing.
-- **What "a submission" actually is.** A single user message? A full
-  task/turn including all tool calls until the agent stops? This determines
-  what "stateless per submission" even means operationally and needs to be
-  pinned down before session-boundary policy (above) can be decided.
-- **Companion window's role.** Currently a side-channel for reviewing
-  pending checkpoints and editing memory entries (`spec.md` §4). If the
-  driving program owns the loop, does the companion window become the
-  primary interface (replacing whatever chat UI exists), or stay a
-  secondary review surface alongside a separate driving-program UI?
-- **Where does the "propose, don't just write" pattern from `spec.md` §3.1
-  live now?** The interactive CLI's native permission dialog was the whole
-  reason that mechanism didn't need a custom UI. Without the CLI, either
-  `canUseTool` needs a real UI surface (the companion window, presumably)
-  or the driving program needs its own.
+- **Session boundary: fresh session per submission, no resume.** A
+  submission is one `query()` call — the full task/turn including whatever
+  tool calls it takes until the agent stops. The next submission starts a
+  new session rather than resuming; whatever context matters gets
+  reconstructed explicitly from the memory store each time. This is the
+  real stateless-per-submission property §1/§2.6 were after — chosen over a
+  longer-lived resumed session specifically because a resumed session
+  quietly reintroduces the "context accumulates and nobody fully knows
+  what's in it" problem this whole rebuild exists to kill.
+- **Write gating: `canUseTool`, not the `PreToolUse` hook + marker file.**
+  In-process, so it can hold auto-mode state directly instead of a
+  filesystem marker (`.claude/memory-auto-mode` was only ever a workaround
+  for the hook running as a separate process with no shared state — that
+  workaround's reason for existing goes away here). `pre-memory-write.mjs`
+  and `pre-compact.mjs` stay as-is for the CLI prototype on `main`; the
+  rebuild reimplements the write-gating logic as a `canUseTool` callback,
+  not a shelled-out hook script.
+- **Default posture: auto + audit, not ask-by-default.** Gating every write
+  behind a dialog trains click-through-without-reading, which is a weaker
+  guarantee than an audit trail someone can actually inspect. Writes and
+  agent-driven pin/status toggles proceed by default and land in the audit
+  log; the companion window surfaces that log prominently (not a file you
+  have to go find) so "auditable" stays true in practice, not just in
+  theory. Full `ask`-and-block mode stays available, opt-in, for anyone who
+  wants to micromanage what lands in context — same shape as today's
+  `§3.10` auto-mode toggle, just with the default flipped.
+- **Companion window: primary interface, but low-friction by design.** It's
+  where chat, memory review, and (when opted into) approvals all live —
+  not a mandatory checkpoint most users interact with, since most people
+  will run in auto mode and only open it when they actually want to look.
+- **Subagent memory access: read, plus narrow write (pin/status toggle
+  only) — not full write-back.** Extends `spec.md` §3.3/§3.5's existing
+  toggle shape (frontmatter-only, via `setField` — `status` and `pinned`,
+  never body content or new entries) to subagents, instead of the
+  main-loop-only toggle it is today. Creating or editing memory content
+  stays main-loop-only, same as `spec.md` §3.2's original resolution — this
+  isn't full concurrent-writer support, just a wider set of hands allowed
+  to flip an existing switch. One known gap, deliberately not designed
+  around yet: two agents flipping the same file's status at the same
+  instant can race (last write wins, the other flip silently drops). Narrow
+  and low-stakes enough to defer — reopen only if it's shown to actually
+  happen, same "reopen only if shown to bottleneck" spirit `spec.md` §3.6
+  used for its own concurrency question.
 
 ## 4. What carries over vs. what's new
 
 **Carries over largely as-is** (already built, self-tested, verified live
 against real Claude Code behavior in `spec.md`):
-- `.claude/hooks/pre-memory-write.mjs`, `.claude/hooks/pre-compact.mjs` —
-  hooks still fire in SDK mode (§2.2).
-- `scripts/frontmatter.mjs`, `scripts/memory-toggle.mjs`,
-  `scripts/memory-auto-mode.mjs` — pure file operations, independent of
-  which harness is driving.
+- `scripts/frontmatter.mjs` — the flat frontmatter read/write helpers,
+  independent of which harness is driving.
 - The `memory/` frontmatter model itself (`status`, `pinned`, `summarizes`)
   and the pending/resolved bridge in `companion/`.
+- `.claude/hooks/pre-compact.mjs` — compaction is still automatic and
+  `PreCompact` still fires in SDK mode (§2.5); no reason to reimplement it.
+
+**Superseded by §3's decisions, stays on `main` for the CLI prototype only:**
+- `.claude/hooks/pre-memory-write.mjs` and `.claude/memory-auto-mode` — the
+  marker-file toggle was a workaround for the hook's separate-process
+  statelessness. The rebuild's `canUseTool` callback replaces both with
+  in-process state, so neither ports over.
+- `scripts/memory-toggle.mjs`/`scripts/memory-auto-mode.mjs` as *CLI*
+  convenience scripts — the underlying `setField` operations they wrap
+  still matter (agents now call them directly for pin/status toggles, §3),
+  just not as human-invoked scripts in the rebuilt flow.
 
 **New, and the actual scope of this rebuild:**
-- The driving program itself — owns the `query()` loop, session boundaries,
-  and whatever `canUseTool`/hook wiring is chosen (§3).
+- The driving program itself — owns the `query()` loop, fresh-session-per-
+  submission boundaries, and the `canUseTool` callback (auto-by-default,
+  with opt-in `ask` mode).
 - Explicit `autoMemoryEnabled: false` — one line, but the concrete fix for
   §1's motivating concern.
-- Whatever the session-boundary decision (§3) requires for reconstructing
-  context per submission.
+- The companion window's expansion into the primary interface: chat surface
+  plus the audit-log view plus (opt-in) the pending-approval panel.
+- Reconstructing whatever context a submission needs from the memory store,
+  fresh, each call.
 
 ## 5. Next steps
 
