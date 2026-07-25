@@ -5,8 +5,6 @@
 
 import { execFileSync } from "node:child_process";
 
-const USAGE = "usage: memory-history.mjs [file]";
-
 function main() {
   const [file] = process.argv.slice(2);
   const target = file ? `memory/${file}` : "memory/";

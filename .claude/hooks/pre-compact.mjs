@@ -37,8 +37,7 @@ export function archiveTranscript(payload) {
 }
 
 function main() {
-  const raw = readStdin();
-  const payload = JSON.parse(raw);
+  const payload = JSON.parse(readFileSync(0, "utf8"));
 
   try {
     archiveTranscript(payload);
@@ -51,10 +50,6 @@ function main() {
   const result = decide(payload);
   if (result) process.stdout.write(JSON.stringify(result));
   process.exit(0);
-}
-
-function readStdin() {
-  return readFileSync(0, "utf8");
 }
 
 if (process.argv[2] === "--self-test") {

@@ -13,11 +13,12 @@ import { fileURLToPath } from "node:url";
 import { readFrontmatter, getField, setField } from "../scripts/frontmatter.mjs";
 
 const PORT = 4317;
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, "..");
 const MEMORY_DIR = join(ROOT, "memory");
 const PENDING_DIR = join(ROOT, "memory", "pending");
 const RESOLVED_DIR = join(ROOT, "memory", "resolved");
-const INDEX_HTML = join(dirname(fileURLToPath(import.meta.url)), "index.html");
+const INDEX_HTML = join(HERE, "index.html");
 
 for (const dir of [PENDING_DIR, RESOLVED_DIR]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
