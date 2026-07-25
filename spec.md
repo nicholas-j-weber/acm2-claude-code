@@ -125,6 +125,16 @@ required to do:
   a designed provenance record, and depends on tool access this spec can't
   assume. Curated inclusion in the prompt is the only reliable path.
 
+**Commit hash, only when the memory is about a code change.** A memory
+entry's frontmatter can carry a `provenance: <commit-hash>` field pointing
+at the commit that motivated it — but only when there is one. Preferences,
+project context, and decisions with no code behind them get no hash; forcing
+one on every entry just produces empty or fabricated fields. When a hash is
+present and an entry's own summary isn't enough to act on, `git show <hash>`
+gets the full diff on demand — the diff itself never gets copied into the
+memory file, since that duplicates what git already keeps permanently and
+goes stale the moment a later commit touches the same lines.
+
 ### 3.3 On/off without delete
 
 Memories (or whole categories — `user`/`feedback`/`project`/`reference`,
