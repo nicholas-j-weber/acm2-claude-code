@@ -21,9 +21,20 @@
   .compress-bar { position: sticky; bottom: 0; background: #fff; border-top: 1px solid #ccc; padding: 0.75rem 0; margin-top: 1rem; display: none; }
   .compress-bar.visible { display: block; }
   .compress-bar input, .compress-bar select, .compress-bar textarea { display: block; width: 100%; box-sizing: border-box; margin: 0.3rem 0; font: inherit; padding: 0.4rem; }
+  .tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; }
+  .tab-button { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.6rem 0.2rem; font: inherit; font-size: 1.1rem; color: #666; cursor: pointer; }
+  .tab-button.active { color: #000; border-bottom-color: #7a5cff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
+<div class="tabs">
+  <button class="tab-button active" data-tab="memory">memory <span id="memCount"></span></button>
+  <button class="tab-button" data-tab="pending">pending <span id="pendingCount"></span></button>
+</div>
+
+<div id="tab-memory" class="tab-panel active">
 <h1>memory — memory/*.md</h1>
 <div id="memList" class="empty">loading…</div>
 <div id="compressBar" class="compress-bar">
@@ -39,12 +50,24 @@
   <textarea id="compressBody" placeholder="summary body"></textarea>
   <button id="compressButton">Create summary &amp; deactivate selected</button>
 </div>
+</div>
 
+<div id="tab-pending" class="tab-panel">
 <h1>pending — memory/pending/</h1>
 <div id="list" class="empty">loading…</div>
+</div>
 
 <script>
 const selected = new Set();
+
+for (const btn of document.querySelectorAll(".tab-button")) {
+  btn.onclick = () => {
+    for (const b of document.querySelectorAll(".tab-button")) b.classList.remove("active");
+    for (const p of document.querySelectorAll(".tab-panel")) p.classList.remove("active");
+    btn.classList.add("active");
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+  };
+}
 
 function anyFieldFocused(root) {
   const el = document.activeElement;
@@ -56,6 +79,7 @@ async function loadMemories() {
   if (anyFieldFocused(container) || anyFieldFocused(document.getElementById("compressBar"))) return;
 
   const items = await fetch("/api/memories").then(r => r.json());
+  document.getElementById("memCount").textContent = `(${items.length})`;
   if (items.length === 0) {
     container.className = "empty";
     container.textContent = "no memory entries";
@@ -196,6 +220,7 @@ document.getElementById("compressButton").onclick = async () => {
 
 async function load() {
   const items = await fetch("/api/pending").then(r => r.json());
+  document.getElementById("pendingCount").textContent = `(${items.length})`;
   const list = document.getElementById("list");
   if (items.length === 0) {
     list.className = "empty";
