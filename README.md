@@ -1,6 +1,6 @@
 # ACM2 for Claude Code
 
-A Claude Code plugin that makes the CLI's memory system auditable: every
+An experimental Claude Code plugin that makes the CLI's memory system auditable: every
 write is a visible proposal (not a silent mutation), subagents get
 provenance-tracked context instead of starting cold, and compaction can't
 happen without warning. In beta.
