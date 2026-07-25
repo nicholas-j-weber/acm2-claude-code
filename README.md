@@ -65,6 +65,7 @@ alongside it ungoverned.
 
 ## Status
 
-Every mechanism above has been built and verified against a real running
-session, not just written and assumed to work. Nothing here is scoped or
-speculative-only.
+Experimental, early beta. Every mechanism above has been exercised in a real
+running session and confirmed on disk rather than taken on faith — but only
+within this repo's own test loop. It hasn't yet been used to actually build
+a project. Expect rough edges once it meets a real workflow.
