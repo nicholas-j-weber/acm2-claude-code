@@ -1,4 +1,4 @@
-# acm2-cc
+# ACM2 for Claude Code
 
 A Claude Code plugin that makes the CLI's memory system auditable: every
 write is a visible proposal (not a silent mutation), subagents get
